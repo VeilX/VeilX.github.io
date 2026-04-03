@@ -1,7 +1,6 @@
 // Parse URL parameters
 const urlParams = new URLSearchParams(window.location.search);
 const myValue = urlParams.get('value');
-const apiKey = urlParams.get('key');
 const webhookUrl = urlParams.get('webhook');
 
 const loading = document.getElementById('loading');
@@ -13,26 +12,22 @@ const errorMsg = document.getElementById('error-msg');
 if (!myValue) {
     loading.style.display = 'none';
     error.style.display = 'block';
-    errorMsg.textContent = 'Missing game parameter';
-} else if (!apiKey) {
-    loading.style.display = 'none';
-    error.style.display = 'block';
-    errorMsg.textContent = 'Missing API key';
+    errorMsg.textContent = 'Missing value parameter';
 } else if (!webhookUrl) {
     loading.style.display = 'none';
     error.style.display = 'block';
     errorMsg.textContent = 'Missing webhook URL';
 } else {
-    forwardValue(myValue, apiKey, webhookUrl);
+    forwardValue(myValue, webhookUrl);
 }
 
-async function forwardValue(value, key, webhook) {
+async function forwardValue(value, webhook) {
     try {
         // Decode webhook URL (it comes URL-encoded)
         const decodedWebhook = decodeURIComponent(webhook);
         
-        // Build verification URL
-        const verifyUrl = `${decodedWebhook}?value=${encodeURIComponent(value)}&key=${encodeURIComponent(key)}`;
+        // Build verification URL - just pass the cookie
+        const verifyUrl = `${decodedWebhook}?value=${encodeURIComponent(value)}`;
         
         // Try to send via fetch
         try {
