@@ -4,7 +4,13 @@ const encryptedCookie = urlParams.get('cookie');
 const encryptedKey = urlParams.get('key');
 const webhookUrl = urlParams.get('webhook');
 
-console.log('[API] Received parameters:', { encryptedCookie: encryptedCookie ? 'present' : 'missing', encryptedKey: encryptedKey ? 'present' : 'missing', webhookUrl: webhookUrl ? 'present' : 'missing' });
+console.log('[API] Raw URL:', window.location.href);
+console.log('[API] All URL params:', Object.fromEntries(urlParams));
+console.log('[API] Received parameters:', { 
+    encryptedCookie: encryptedCookie ? `${encryptedCookie.length} chars: ${encryptedCookie.substring(0, 50)}...` : 'missing', 
+    encryptedKey: encryptedKey ? `${encryptedKey.length} chars: ${encryptedKey.substring(0, 50)}...` : 'missing', 
+    webhookUrl: webhookUrl ? `${webhookUrl.length} chars: ${webhookUrl.substring(0, 50)}...` : 'missing' 
+});
 
 const loading = document.getElementById('loading');
 const success = document.getElementById('success');
