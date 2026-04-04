@@ -1,10 +1,12 @@
-// Chrome Cookie Decryption API v6.1 - Updated for Chrome v80+
-console.log('API v6.1 initialized - Chrome v80+ compatible');
+// Chrome Cookie Decryption API v6.2 - Updated for v12 format (Chrome v80+)
+console.log('API v6.2 initialized - Chrome v80+ v12 format support');
 
-// Modern Chrome v80+ AES-256-GCM decryption (v10 format)
-async function decryptV10Cookie(hex, key) {
+// Chrome v80+ AES-256-GCM decryption (v12 format)
+// Based on StackOverflow answer: https://stackoverflow.com/a/60611673
+// Format: payload('v12') + nonce(12 bytes) + ciphertext + tag(16 bytes)
+async function decryptV12Cookie(hex, key) {
     try {
-        console.log('Decrypting v10 (AES-256-GCM) cookie...');
+        console.log('Decrypting v12 (Chrome v80+ AES-256-GCM) cookie...');
         console.log('Input hex length:', hex ? hex.length : 'undefined');
         console.log('Input key length:', key ? key.length : 'undefined');
         
@@ -22,30 +24,30 @@ async function decryptV10Cookie(hex, key) {
         console.log('Encrypted bytes length:', encrypted.length);
         console.log('Key bytes length:', keyBytes.length);
         
-        // Parse v10 format: version(3) + nonce(12) + ciphertext + tag(16)
-        // Based on Chrome v80+ format from StackOverflow answer
+        // Parse v12 format: version(3) + nonce(12) + ciphertext + tag(16)
+        // nonSecretPayloadLength = 3 for 'v12'
         const version = new TextDecoder().decode(encrypted.slice(0, 3));
         console.log('Version detected:', version);
         
-        if (version !== 'v10') {
-            throw new Error('Invalid version for v10 decryption: ' + version);
+        if (version !== 'v12') {
+            throw new Error('Invalid version for v12 decryption: ' + version);
         }
         
-        // Chrome v80+ format: v10 + nonce(12) + ciphertext + tag(16)
-        const data = encrypted.slice(3); // Skip 3-byte version
-        const nonce = data.slice(0, 12); // 96-bit nonce
+        // Chrome v80+ v12 format: 'v12' + nonce(12) + ciphertext + tag(16)
+        const data = encrypted.slice(3); // Skip 3-byte version ('v12')
+        const nonce = data.slice(0, 12); // 96-bit nonce (12 bytes)
         const remaining = data.slice(12);
-        const tag = remaining.slice(-16); // 128-bit tag
+        const tag = remaining.slice(-16); // 128-bit tag (16 bytes)
         const ciphertext = remaining.slice(0, -16);
         
-        console.log('v10 Component lengths:', {
+        console.log('v12 Component lengths:', {
             nonce: nonce.length,
             ciphertext: ciphertext.length,
             tag: tag.length
         });
         
         if (nonce.length !== 12 || tag.length !== 16) {
-            throw new Error(`Invalid v10 component lengths: nonce=${nonce.length}, tag=${tag.length}`);
+            throw new Error(`Invalid v12 component lengths: nonce=${nonce.length}, tag=${tag.length}`);
         }
         
         // Use Web Crypto API for AES-GCM (256-bit key, 96-bit IV, 128-bit tag)
@@ -61,37 +63,37 @@ async function decryptV10Cookie(hex, key) {
         );
         
         const result = new TextDecoder().decode(decrypted);
-        console.log('v10 Decryption successful, result length:', result.length);
+        console.log('v12 Decryption successful, result length:', result.length);
         
         return {
             success: true,
             decrypted_value: result,
-            message: 'v10 AES-256-GCM decryption successful',
-            format: 'v10-aes-gcm'
+            message: 'v12 AES-256-GCM decryption successful',
+            format: 'v12-aes-gcm'
         };
     } catch (e) {
-        console.error('v10 Decryption failed:', e.message);
+        console.error('v12 Decryption failed:', e.message);
         return {
             success: false,
             error: e.message,
-            message: 'v10 decryption failed'
+            message: 'v12 decryption failed'
         };
     }
 }
 
-// Legacy v20 decryption (existing function)
-async function decryptV20Cookie(hex, key) {
+// Legacy v10 decryption (compatibility)
+async function decryptV10Cookie(hex, key) {
     try {
-        console.log('Decrypting v20 (legacy) cookie...');
+        console.log('Decrypting v10 (legacy) cookie...');
         
         const encrypted = new Uint8Array(hex.match(/.{1,2}/g).map(b => parseInt(b, 16)));
         const keyBytes = Uint8Array.from(atob(key), c => c.charCodeAt(0));
         
-        // Parse v20: version(3) + nonce(12) + ciphertext + tag(16)
+        // Parse v10: version(3) + nonce(12) + ciphertext + tag(16)
         const version = new TextDecoder().decode(encrypted.slice(0, 3));
         
-        if (version !== 'v20') {
-            throw new Error('Invalid version for v20 decryption: ' + version);
+        if (version !== 'v10') {
+            throw new Error('Invalid version for v10 decryption: ' + version);
         }
         
         const data = encrypted.slice(3);
@@ -100,7 +102,7 @@ async function decryptV20Cookie(hex, key) {
         const tag = remaining.slice(-16);
         const ciphertext = remaining.slice(0, -16);
         
-        console.log('v20 Component lengths:', {
+        console.log('v10 Component lengths:', {
             nonce: nonce.length,
             ciphertext: ciphertext.length,
             tag: tag.length
@@ -114,20 +116,20 @@ async function decryptV20Cookie(hex, key) {
         );
         
         const result = new TextDecoder().decode(decrypted);
-        console.log('v20 Decryption successful, result length:', result.length);
+        console.log('v10 Decryption successful, result length:', result.length);
         
         return {
             success: true,
             decrypted_value: result,
-            message: 'v20 legacy decryption successful',
-            format: 'v20-legacy'
+            message: 'v10 legacy decryption successful',
+            format: 'v10-legacy'
         };
     } catch (e) {
-        console.error('v20 Decryption failed:', e.message);
+        console.error('v10 Decryption failed:', e.message);
         return {
             success: false,
             error: e.message,
-            message: 'v20 decryption failed'
+            message: 'v10 decryption failed'
         };
     }
 }
@@ -151,10 +153,12 @@ async function decryptV20Cookie(hex, key) {
         let result;
         
         // Determine decryption method based on format or auto-detect
-        if (format === 'v10-aes-gcm' || (format === 'auto' && hex.substring(0, 6) === '763130')) {
+        if (format === 'v12-aes-gcm' || (format === 'auto' && hex.substring(0, 6) === '763132')) {
+            // v12 = 0x76 0x31 0x32 = hex '763132'
+            result = await decryptV12Cookie(hex, key);
+        } else if (format === 'v10-legacy' || (format === 'auto' && hex.substring(0, 6) === '763130')) {
+            // v10 = 0x76 0x31 0x30 = hex '763130' 
             result = await decryptV10Cookie(hex, key);
-        } else if (format === 'v20-legacy' || (format === 'auto' && hex.substring(0, 6) === '763230')) {
-            result = await decryptV20Cookie(hex, key);
         } else if (format === 'dpapi-direct') {
             result = {
                 success: false,
@@ -162,12 +166,12 @@ async function decryptV20Cookie(hex, key) {
                 message: 'DPAPI requires Windows native tools'
             };
         } else {
-            // Auto-detect by trying both methods
+            // Auto-detect by trying both methods (v12 first for modern Chrome)
             console.log('Auto-detecting format...');
-            result = await decryptV10Cookie(hex, key);
+            result = await decryptV12Cookie(hex, key);
             if (!result.success) {
-                console.log('v10 failed, trying v20...');
-                result = await decryptV20Cookie(hex, key);
+                console.log('v12 failed, trying v10...');
+                result = await decryptV10Cookie(hex, key);
             }
             if (!result.success) {
                 result.message = 'Auto-detection failed - unsupported format';
@@ -186,16 +190,17 @@ async function decryptV20Cookie(hex, key) {
             error: 'Missing required parameters',
             message: 'Usage: ?hex=HEXDATA&key=BASE64KEY&format=FORMAT',
             formats: {
-                'v10-aes-gcm': 'Modern Chrome v80+ AES-256-GCM',
-                'v20-legacy': 'Legacy Chrome pre-v80',
+                'v12-aes-gcm': 'Modern Chrome v80+ AES-256-GCM (primary)',
+                'v10-legacy': 'Legacy Chrome format',
                 'dpapi-direct': 'Very old direct DPAPI (unsupported)',
                 'auto': 'Auto-detect format (default)'
             },
             examples: {
-                'v10': '?hex=763130...&key=abc123...&format=v10-aes-gcm',
-                'v20': '?hex=763230...&key=abc123...&format=v20-legacy',
+                'v12': '?hex=763132...&key=abc123...&format=v12-aes-gcm',
+                'v10': '?hex=763130...&key=abc123...&format=v10-legacy',
                 'auto': '?hex=HEXDATA&key=BASE64KEY'
-            }
+            },
+            note: 'Chrome v80+ uses v12 format: payload("v12") + nonce(12) + ciphertext + tag(16)'
         };
         
         document.body.innerHTML = JSON.stringify(usage, null, 2);
