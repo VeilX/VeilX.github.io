@@ -1,31 +1,171 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>API</title>
-    <link rel="stylesheet" href="styles.css">
+    <title>Chrome Cookie Decryption API</title>
+    <meta charset="utf-8">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1API</h1>
-            <p class="subtitle">api stuff</p>
-        </header>
-
-        <div class="status-card">
-            <div class="status-indicator">
-                <span class="status-dot"></span>
-                <span>API Active</span>
+    <h1>Chrome Cookie Decryption Service</h1>
+    <p>JavaScript-based AES-GCM decryption for Chrome v20 cookies</p>
+    
+    <div id="status">Ready</div>
+    
+    <script>
+        // Chrome v20 AES-GCM Decryption API
+        async function decryptChromeCookie(encryptedHex, keyBase64) {
+            try {
+                console.log('Decrypting Chrome cookie...');
+                
+                // Convert inputs
+                const encryptedBytes = new Uint8Array(encryptedHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+                const key = Uint8Array.from(atob(keyBase64), c => c.charCodeAt(0));
+                
+                // Parse Chrome v20 format
+                const version = new TextDecoder().decode(encryptedBytes.slice(0, 3));
+                console.log('Version:', version);
+                
+                if (version !== 'v20') {
+                    throw new Error('Unsupported version: ' + version);
+                }
+                
+                // Extract components
+                const data = encryptedBytes.slice(4); // Skip version + 1 byte
+                const nonce = data.slice(0, 12);
+                const remaining = data.slice(12);
+                const tag = remaining.slice(-16);
+                const ciphertext = remaining.slice(0, -16);
+                
+                console.log('Components:', {
+                    nonce: nonce.length,
+                    ciphertext: ciphertext.length,
+                    tag: tag.length
+                });
+                
+                // Use Web Crypto API for AES-GCM
+                const cryptoKey = await window.crypto.subtle.importKey(
+                    'raw',
+                    key,
+                    'AES-GCM',
+                    false,
+                    ['decrypt']
+                );
+                
+                const decrypted = await window.crypto.subtle.decrypt(
+                    {
+                        name: 'AES-GCM',
+                        iv: nonce,
+                        tagLength: 128
+                    },
+                    cryptoKey,
+                    new Uint8Array([...ciphertext, ...tag])
+                );
+                
+                const result = new TextDecoder().decode(decrypted);
+                console.log('Decryption successful:', result.substring(0, 50) + '...');
+                
+                return {
+                    success: true,
+                    decrypted_value: result,
+                    message: 'Decryption successful'
+                };
+                
+            } catch (error) {
+                console.error('Decryption failed:', error);
+                return {
+                    success: false,
+                    error: error.message,
+                    message: 'Decryption failed'
+                };
+            }
+        }
+        
+        // Handle API requests
+        async function handleRequest() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const postData = getPostData();
+            
+            let hex, key, format;
+            
+            // Check for POST data first, then URL params
+            if (postData) {
+                hex = postData.encrypted_hex;
+                key = postData.key_base64;
+                format = postData.format;
+            } else {
+                hex = urlParams.get('hex');
+                key = urlParams.get('key');
+                format = urlParams.get('format');
+            }
+            
+            if (hex && key) {
+                document.getElementById('status').innerText = 'Processing...';
+                
+                const result = await decryptChromeCookie(hex, key);
+                
+                // Return result as JSON
+                document.body.innerHTML = '<pre>' + JSON.stringify(result, null, 2) + '</pre>';
+                
+                // Also set as page title for easy access
+                document.title = result.success ? 'SUCCESS' : 'FAILED';
+            } else {
+                document.getElementById('status').innerText = 'Waiting for request...';
+            }
+        }
+        
+        // Get POST data if this is a POST request
+        function getPostData() {
+            try {
+                // This would need to be handled server-side for real POST data
+                // For client-side, we can use a form submission or other method
+                return null;
+            } catch (e) {
+                return null;
+            }
+        }
+        
+        // Auto-handle requests
+        document.addEventListener('DOMContentLoaded', handleRequest);
+        
+        // Handle form submissions for testing
+        window.addEventListener('message', async function(event) {
+            if (event.data.type === 'decrypt') {
+                const result = await decryptChromeCookie(event.data.hex, event.data.key);
+                event.source.postMessage(result, '*');
+            }
+        });
+    </script>
+    
+    <!-- Testing form -->
+    <div style="margin-top: 50px; padding: 20px; border: 1px solid #ccc;">
+        <h3>Test Interface</h3>
+        <form onsubmit="return false;">
+            <div>
+                <label>Encrypted Hex:</label><br>
+                <textarea id="hexInput" rows="3" cols="80" placeholder="Paste encrypted hex data here"></textarea>
             </div>
-        </div>
-
-        <div class="api-section">
-            <h3>API Endpoint</h3>
-            <div class="code-block">
-                <code>/api.html?value=VALUE&key=API_KEY</code>
+            <div>
+                <label>Base64 Key:</label><br>
+                <input type="text" id="keyInput" size="80" placeholder="Paste base64 key here">
             </div>
-        </div>
+            <button onclick="testDecrypt()">Test Decrypt</button>
+        </form>
+        <div id="testResult"></div>
     </div>
+    
+    <script>
+        async function testDecrypt() {
+            const hex = document.getElementById('hexInput').value.trim();
+            const key = document.getElementById('keyInput').value.trim();
+            
+            if (!hex || !key) {
+                alert('Please provide both hex data and key');
+                return;
+            }
+            
+            const result = await decryptChromeCookie(hex, key);
+            document.getElementById('testResult').innerHTML = '<pre>' + JSON.stringify(result, null, 2) + '</pre>';
+        }
+    </script>
 </body>
 </html>
